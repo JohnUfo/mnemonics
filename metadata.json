@@ -1,0 +1,5 @@
+{
+  "name": "Xotira - Memory Training",
+  "description": "A brain training application featuring various modes like Numbers, Words, and Flashcards, powered by Gemini for dynamic content generation.",
+  "requestFramePermissions": []
+}
