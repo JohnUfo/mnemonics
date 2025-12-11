@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, RefreshCw, ChevronRight, ChevronLeft, Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
 import { CategoryId, CategoryItem, FlashCardData } from '../types';
 import { generateContentForCategory } from '../services/geminiService';
@@ -11,11 +11,39 @@ interface ActivityModalProps {
 const ROWS_PER_PAGE = 12;
 const COLS_PER_ROW = 40;
 const TOTAL_PAGES = 3;
+const MAJOR_SYSTEM_KEY = 'major_system_data';
+
+const DEFAULT_MAJOR_SYSTEM: Record<string, string> = {
+  "00": "ZiZi", "01": "ZayTun", "02": "ZiNa", "03": "ZoMbi", "04": "ZoRro", 
+  "05": "ZuLuk", "06": "ZeBra", "07": "ZiraK", "08": "ZeFir", "09": "ZaGar",
+  "10": "TuZ", "11": "ToTi", "12": "TaNka", "13": "ToM", "14": "TaRvuz", 
+  "15": "TiLla", "16": "ToBut", "17": "TiKon", "18": "TuFli", "19": "TiGr",
+  "20": "NayZa", "21": "NoTbuk", "22": "NoN", "23": "NeMo", "24": "NaRvon", 
+  "25": "NaLichka", "26": "NoBel", "27": "NoK", "28": "NeFt", "29": "NeGr",
+  "30": "MuZ", "31": "MoTor", "32": "MaNti", "33": "MayMun", "34": "MaRker", 
+  "35": "MoL", "36": "MoBile", "37": "MaKaron", "38": "MikraFon", "39": "MaGnit",
+  "40": "RoZetka", "41": "RaTsiya", "42": "RoNaldo", "43": "RoMol", "44": "aRRa", 
+  "45": "RuL", "46": "RoBot", "47": "RaKeta", "48": "RaFaello", "49": "RaGatka",
+  "50": "LaZer", "51": "LaTta", "52": "LeNta", "53": "LiMon", "54": "LoR", 
+  "55": "LaLaku", "56": "LaB", "57": "LaK", "58": "LiFt", "59": "LaGan",
+  "60": "BiZon", "61": "BiTon", "62": "BaNan", "63": "BoMba", "64": "BaRaban", 
+  "65": "BoLta", "66": "BoBo", "67": "BoKal", "68": "BuFer", "69": "BeGemot",
+  "70": "KoZ", "71": "KiTob", "72": "KoNfet", "73": "KaMon", "74": "KRovat", 
+  "75": "KLavitura", "76": "KuBik", "77": "KaKtus", "78": "KoFe", "79": "KenGuru",
+  "80": "FiZik", "81": "FuTbolka", "82": "FeN", "83": "FM radio", "84": "FaRtuk", 
+  "85": "FiL", "86": "FBr agent", "87": "ForK", "88": "FiFa Kubogi", "89": "FurGon",
+  "90": "GaZ", "91": "GiTara", "92": "GNom", "93": "GuMma", "94": "GaRri Potter", 
+  "95": "GLam", "96": "GuBka", "97": "GulKaram", "98": "GraFin", "99": "GuGurt"
+};
 
 const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   // State for View Management
-  const [viewState, setViewState] = useState<'SETUP' | 'COUNTDOWN' | 'GAME' | 'RECALL' | 'RESULT' | 'FLASHCARDS'>(
-    category.id === CategoryId.NUMBERS ? 'SETUP' : 'FLASHCARDS'
+  const [viewState, setViewState] = useState<
+    'SETUP' | 'COUNTDOWN' | 'GAME' | 'RECALL' | 'RESULT' | 'FLASHCARDS' | 
+    'MAJOR_MENU' | 'MAJOR_EDIT' | 'MAJOR_PRACTICE' | 'MAJOR_RESULT'
+  >(
+    category.id === CategoryId.NUMBERS ? 'SETUP' : 
+    category.id === CategoryId.FLASH_CARDS ? 'MAJOR_MENU' : 'FLASHCARDS'
   );
 
   // Configuration for Numbers Game
@@ -25,16 +53,14 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     prepTime: 5,
   });
 
-  // Game State
+  // Game State (Numbers)
   const [countdown, setCountdown] = useState(5);
-  const [gameTime, setGameTime] = useState(300); // 5 minutes in seconds
-  const [recallTime, setRecallTime] = useState(900); // 15 minutes in seconds
-  
-  const [numbersGrid, setNumbersGrid] = useState<number[][][]>([]); // [page][row][col]
-  const [userAnswers, setUserAnswers] = useState<string[][][]>([]); // [page][row][col]
-  
+  const [gameTime, setGameTime] = useState(300);
+  const [recallTime, setRecallTime] = useState(900);
+  const [numbersGrid, setNumbersGrid] = useState<number[][][]>([]);
+  const [userAnswers, setUserAnswers] = useState<string[][][]>([]);
   const [currentPage, setCurrentPage] = useState(0);
-  const [cursor, setCursor] = useState({ row: 0, col: 0 }); // Cursor position
+  const [cursor, setCursor] = useState({ row: 0, col: 0 });
 
   // Flashcard State (Legacy/Other Categories)
   const [loading, setLoading] = useState(true);
@@ -42,12 +68,68 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
+  // Major System State
+  const [majorSystem, setMajorSystem] = useState<Record<string, string>>({});
+  const [practiceDeck, setPracticeDeck] = useState<string[]>([]);
+  const [cardTimings, setCardTimings] = useState<Record<string, number>>({});
+  const [currentCardStartTime, setCurrentCardStartTime] = useState(0);
+  const [currentCardElapsedTime, setCurrentCardElapsedTime] = useState(0);
+  const timerRef = useRef<number | null>(null);
+
   // Initialization
   useEffect(() => {
-    if (category.id !== CategoryId.NUMBERS) {
+    if (category.id === CategoryId.FLASH_CARDS) {
+      loadMajorSystem();
+      setViewState('MAJOR_MENU');
+    } else if (category.id !== CategoryId.NUMBERS) {
       loadFlashcards();
     }
   }, [category]);
+
+  const loadMajorSystem = () => {
+    const stored = localStorage.getItem(MAJOR_SYSTEM_KEY);
+    let system: Record<string, string> = {};
+    
+    if (stored) {
+      system = JSON.parse(stored);
+    }
+    
+    // Ensure all 00-99 keys exist and have values
+    for (let i = 0; i < 100; i++) {
+      const key = i.toString().padStart(2, '0');
+      // If key missing or empty, use default
+      if (!system[key]) {
+         system[key] = DEFAULT_MAJOR_SYSTEM[key] || '';
+      }
+    }
+    
+    setMajorSystem(system);
+  };
+
+  const saveMajorSystem = () => {
+    localStorage.setItem(MAJOR_SYSTEM_KEY, JSON.stringify(majorSystem));
+    setViewState('MAJOR_MENU');
+  };
+
+  const startMajorPractice = () => {
+    // Shuffle deck
+    const deck = Object.keys(majorSystem).sort(() => Math.random() - 0.5);
+    setPracticeDeck(deck);
+    setCurrentCardIndex(0);
+    setCardTimings({});
+    setIsFlipped(false);
+    
+    // Start timer for first card
+    setCurrentCardStartTime(Date.now());
+    setViewState('MAJOR_PRACTICE');
+  };
+
+  const handleMajorInput = (key: string, value: string) => {
+    setMajorSystem(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
 
   const loadFlashcards = async () => {
     setLoading(true);
@@ -58,11 +140,88 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     setLoading(false);
   };
 
-  // Start Game Handler
+  // Timer logic for Major Practice
+  useEffect(() => {
+    if (viewState === 'MAJOR_PRACTICE') {
+      const updateTimer = () => {
+        setCurrentCardElapsedTime(Date.now() - currentCardStartTime);
+        timerRef.current = requestAnimationFrame(updateTimer);
+      };
+      timerRef.current = requestAnimationFrame(updateTimer);
+      return () => {
+        if (timerRef.current) cancelAnimationFrame(timerRef.current);
+      };
+    }
+  }, [viewState, currentCardStartTime]);
+
+  const handleNextMajorCard = useCallback(() => {
+    // Save cumulative time for current card
+    const currentKey = practiceDeck[currentCardIndex];
+    const duration = Date.now() - currentCardStartTime;
+    
+    setCardTimings(prev => ({
+      ...prev,
+      [currentKey]: (prev[currentKey] || 0) + duration
+    }));
+
+    if (currentCardIndex < practiceDeck.length - 1) {
+      setIsFlipped(false);
+      setCurrentCardIndex(prev => prev + 1);
+      setCurrentCardStartTime(Date.now());
+    } else {
+      finishMajorPractice();
+    }
+  }, [practiceDeck, currentCardIndex, currentCardStartTime]);
+
+  const handlePrevMajorCard = useCallback(() => {
+    if (currentCardIndex > 0) {
+      // Save cumulative time for current card
+      const currentKey = practiceDeck[currentCardIndex];
+      const duration = Date.now() - currentCardStartTime;
+      
+      setCardTimings(prev => ({
+        ...prev,
+        [currentKey]: (prev[currentKey] || 0) + duration
+      }));
+
+      setIsFlipped(false);
+      setCurrentCardIndex(prev => prev - 1);
+      setCurrentCardStartTime(Date.now());
+    }
+  }, [practiceDeck, currentCardIndex, currentCardStartTime]);
+
+  const finishMajorPractice = useCallback(() => {
+    if (viewState === 'MAJOR_PRACTICE') {
+       const currentKey = practiceDeck[currentCardIndex];
+       const duration = Date.now() - currentCardStartTime;
+       setCardTimings(prev => ({
+         ...prev,
+         [currentKey]: (prev[currentKey] || 0) + duration
+       }));
+    }
+    setViewState('MAJOR_RESULT');
+  }, [viewState, practiceDeck, currentCardIndex, currentCardStartTime]);
+
+  // Keyboard Navigation for Major Practice
+  useEffect(() => {
+    if (viewState === 'MAJOR_PRACTICE') {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'ArrowRight') {
+          handleNextMajorCard();
+        } else if (e.key === 'ArrowLeft') {
+          handlePrevMajorCard();
+        } else if (e.key === ' ' || e.key === 'Enter') {
+          setIsFlipped(prev => !prev);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [viewState, handleNextMajorCard, handlePrevMajorCard]);
+
+  // Numbers Game Handlers
   const handleStartGame = () => {
-    // Generate Random Numbers
     const grid: number[][][] = [];
-    // Initialize Empty Answers Grid
     const answersGrid: string[][][] = [];
 
     for (let p = 0; p < TOTAL_PAGES; p++) {
@@ -83,20 +242,12 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     }
     setNumbersGrid(grid);
     setUserAnswers(answersGrid);
-    
-    // Start Countdown
     setCountdown(config.prepTime);
     setViewState('COUNTDOWN');
   };
 
-  const handleFinishRecall = () => {
-    setViewState('RESULT');
-  };
-
-  const handleFinishGame = () => {
-    setViewState('RECALL');
-  };
-
+  const handleFinishRecall = () => setViewState('RESULT');
+  const handleFinishGame = () => setViewState('RECALL');
   const handleRestart = () => {
     setViewState('SETUP');
     setCurrentPage(0);
@@ -105,7 +256,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     setRecallTime(900);
   };
 
-  // Countdown Logic
+  // Effects for Timers
   useEffect(() => {
     if (viewState === 'COUNTDOWN') {
       if (countdown > 0) {
@@ -117,34 +268,29 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     }
   }, [viewState, countdown]);
 
-  // Game Timer Logic
   useEffect(() => {
     if (viewState === 'GAME') {
       if (gameTime === 0) {
         setViewState('RECALL');
         return;
       }
-      const timer = setInterval(() => {
-        setGameTime(t => Math.max(0, t - 1));
-      }, 1000);
+      const timer = setInterval(() => setGameTime(t => Math.max(0, t - 1)), 1000);
       return () => clearInterval(timer);
     }
   }, [viewState, gameTime]);
 
-  // Recall Timer Logic
   useEffect(() => {
     if (viewState === 'RECALL') {
        if (recallTime === 0) {
          setViewState('RESULT');
          return;
        }
-       const timer = setInterval(() => {
-        setRecallTime(t => Math.max(0, t - 1));
-      }, 1000);
+       const timer = setInterval(() => setRecallTime(t => Math.max(0, t - 1)), 1000);
       return () => clearInterval(timer);
     }
   }, [viewState, recallTime]);
 
+  // Cursor & Input Logic for Numbers
   const moveCursorNext = useCallback(() => {
     setCursor(prev => {
       let newCol = prev.col + config.cursorWidth;
@@ -169,31 +315,21 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     });
   }, [config.cursorWidth]);
 
-  // Keyboard Navigation for Game
   useEffect(() => {
     if (viewState !== 'GAME') return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') {
-        moveCursorNext();
-      } else if (e.key === 'ArrowLeft') {
-         moveCursorPrev();
-      } else if (e.key === 'ArrowDown') {
-        setCursor(prev => ({ ...prev, row: Math.min(prev.row + 1, ROWS_PER_PAGE - 1) }));
-      } else if (e.key === 'ArrowUp') {
-        setCursor(prev => ({ ...prev, row: Math.max(prev.row - 1, 0) }));
-      }
+      if (e.key === 'ArrowRight') moveCursorNext();
+      else if (e.key === 'ArrowLeft') moveCursorPrev();
+      else if (e.key === 'ArrowDown') setCursor(prev => ({ ...prev, row: Math.min(prev.row + 1, ROWS_PER_PAGE - 1) }));
+      else if (e.key === 'ArrowUp') setCursor(prev => ({ ...prev, row: Math.max(prev.row - 1, 0) }));
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewState, moveCursorNext, moveCursorPrev]);
 
   const getCurrentNumberString = () => {
     if (!numbersGrid[currentPage] || !numbersGrid[currentPage][cursor.row]) return "";
-    return numbersGrid[currentPage][cursor.row]
-      .slice(cursor.col, cursor.col + config.cursorWidth)
-      .join('');
+    return numbersGrid[currentPage][cursor.row].slice(cursor.col, cursor.col + config.cursorWidth).join('');
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
@@ -201,70 +337,32 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     let nextCol = col;
     let handled = false;
 
-    if (e.key === 'ArrowRight') {
-      nextCol++;
-      if (nextCol >= COLS_PER_ROW) {
-        nextCol = 0;
-        nextRow++;
-      }
-      handled = true;
-    } else if (e.key === 'ArrowLeft') {
-      nextCol--;
-      if (nextCol < 0) {
-        nextCol = COLS_PER_ROW - 1;
-        nextRow--;
-      }
-      handled = true;
-    } else if (e.key === 'ArrowDown') {
-      nextRow++;
-      handled = true;
-    } else if (e.key === 'ArrowUp') {
-      nextRow--;
-      handled = true;
-    }
+    if (e.key === 'ArrowRight') { nextCol++; if (nextCol >= COLS_PER_ROW) { nextCol = 0; nextRow++; } handled = true; } 
+    else if (e.key === 'ArrowLeft') { nextCol--; if (nextCol < 0) { nextCol = COLS_PER_ROW - 1; nextRow--; } handled = true; }
+    else if (e.key === 'ArrowDown') { nextRow++; handled = true; }
+    else if (e.key === 'ArrowUp') { nextRow--; handled = true; }
 
-    if (handled) {
-      // Check boundaries within the current page
-      if (nextRow >= 0 && nextRow < ROWS_PER_PAGE && nextCol >= 0 && nextCol < COLS_PER_ROW) {
-        e.preventDefault();
-        const nextId = `cell-${nextRow}-${nextCol}`;
-        const element = document.getElementById(nextId);
-        element?.focus();
-      }
+    if (handled && nextRow >= 0 && nextRow < ROWS_PER_PAGE && nextCol >= 0 && nextCol < COLS_PER_ROW) {
+      e.preventDefault();
+      document.getElementById(`cell-${nextRow}-${nextCol}`)?.focus();
     }
   };
 
   const handleAnswerChange = (row: number, col: number, value: string) => {
-    // Only allow single digit or empty
     if (value.length > 1) return;
-    
-    // Only allow numbers
     if (value && !/^[0-9]$/.test(value)) return;
 
     setUserAnswers(prev => {
       const newAnswers = [...prev];
-      const pageAnswers = [...newAnswers[currentPage]];
-      const rowAnswers = [...pageAnswers[row]];
-      rowAnswers[col] = value;
-      pageAnswers[row] = rowAnswers;
-      newAnswers[currentPage] = pageAnswers;
+      newAnswers[currentPage][row][col] = value;
       return newAnswers;
     });
 
-    // Auto-advance if value is entered (length 1)
     if (value.length === 1) {
        let nextRow = row;
        let nextCol = col + 1;
-       if (nextCol >= COLS_PER_ROW) {
-         nextCol = 0;
-         nextRow++;
-       }
-       
-       if (nextRow < ROWS_PER_PAGE) {
-         const nextId = `cell-${nextRow}-${nextCol}`;
-         const element = document.getElementById(nextId);
-         element?.focus();
-       }
+       if (nextCol >= COLS_PER_ROW) { nextCol = 0; nextRow++; }
+       if (nextRow < ROWS_PER_PAGE) document.getElementById(`cell-${nextRow}-${nextCol}`)?.focus();
     }
   };
 
@@ -280,39 +378,23 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
         const rowUserAnswers = userAnswers[p]?.[r] || [];
         const rowCorrectNumbers = numbersGrid[p]?.[r] || [];
         
-        // Find the last index the user interacted with (non-empty)
         let lastIndex = -1;
         for (let i = COLS_PER_ROW - 1; i >= 0; i--) {
-          if (rowUserAnswers[i] && rowUserAnswers[i] !== "") {
-            lastIndex = i;
-            break;
-          }
+          if (rowUserAnswers[i] && rowUserAnswers[i] !== "") { lastIndex = i; break; }
         }
         
-        // If row is completely untouched, skip it for scoring
         if (lastIndex === -1) continue;
 
-        // Check range up to lastIndex (inclusive)
         for (let c = 0; c <= lastIndex; c++) {
           const userVal = rowUserAnswers[c] || "";
           const correctVal = rowCorrectNumbers[c]?.toString();
-          
-          if (userVal === correctVal) {
-            rowCorrect++;
-          } else if (userVal !== "") {
-            // Only count as wrong if it's NOT empty
-            rowWrong++;
-          }
+          if (userVal === correctVal) rowCorrect++;
+          else if (userVal !== "") rowWrong++;
         }
         
         globalCorrect += rowCorrect;
         globalWrong += rowWrong;
-        
-        // Row Scoring Rule: If any error exists in the attempted range (ignoring blanks), row score is 0.
-        // Otherwise, score is the count of correct digits.
-        if (rowWrong === 0) {
-          globalScore += rowCorrect;
-        }
+        if (rowWrong === 0) globalScore += rowCorrect;
       }
     }
     return { totalScore: globalScore, correctCount: globalCorrect, wrongCount: globalWrong };
@@ -322,6 +404,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  };
+
+  const formatMsTime = (ms: number) => {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    const milliseconds = ms % 1000;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`;
   };
 
   // --- RENDERERS ---
@@ -337,7 +426,184 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     );
   }
 
-  // 2. RESULT VIEW
+  // MAJOR SYSTEM VIEWS
+
+  if (viewState === 'MAJOR_MENU') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 md:bg-gray-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-[#F8F9FA] md:bg-white w-full max-w-lg rounded-3xl shadow-2xl p-6 relative">
+          <div className="flex items-center justify-center mb-6 relative">
+            <button 
+              onClick={onClose}
+              className="absolute left-0 p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-900"
+            >
+              <ArrowLeft size={24} />
+            </button>
+            <h2 className="text-xl font-bold text-gray-900">Flash Cards</h2>
+          </div>
+          
+          <div className="flex flex-col gap-4">
+            <button 
+              onClick={startMajorPractice}
+              className="w-full bg-[#D99F72] hover:bg-[#c98e62] text-white font-bold text-lg py-5 rounded-xl shadow-lg shadow-orange-900/10 active:scale-[0.98] transition-all"
+            >
+              Mashq qilish
+            </button>
+            <button 
+              onClick={() => setViewState('MAJOR_EDIT')}
+              className="w-full bg-[#D99F72] hover:bg-[#c98e62] text-white font-bold text-lg py-5 rounded-xl shadow-lg shadow-orange-900/10 active:scale-[0.98] transition-all"
+            >
+              Tizim yaratish
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (viewState === 'MAJOR_EDIT') {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA]">
+        <div className="p-4 md:p-6 flex items-center justify-between bg-white border-b border-gray-100 shrink-0">
+          <button onClick={() => setViewState('MAJOR_MENU')} className="p-2 hover:bg-gray-100 rounded-full">
+            <ArrowLeft size={24} />
+          </button>
+          <h2 className="text-xl font-bold text-gray-900">Major</h2>
+          <div className="w-10"></div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center">
+          <div className="w-full max-w-lg space-y-8">
+            {Array.from({ length: 100 }).map((_, i) => {
+              const key = i.toString().padStart(2, '0');
+              return (
+                <div key={key} className="flex flex-col items-center gap-2">
+                  <div className="w-full border-t border-dashed border-gray-300 mb-4"></div>
+                  <div className="text-4xl font-normal text-gray-900 mb-2">{key}</div>
+                  <div className="w-full">
+                    <label className="block text-sm font-bold text-gray-700 mb-1 ml-1">Obraz</label>
+                    <input 
+                      type="text"
+                      value={majorSystem[key] || ''}
+                      onChange={(e) => handleMajorInput(key, e.target.value)}
+                      placeholder="Enter association..."
+                      className="w-full p-4 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-200 text-lg shadow-sm"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="w-full max-w-lg mt-12 mb-8">
+             <button 
+              onClick={saveMajorSystem}
+              className="w-full bg-[#D99F72] hover:bg-[#c98e62] text-white font-bold text-lg py-4 rounded-xl shadow-lg active:scale-[0.95] transition-all"
+            >
+              Yaratish
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (viewState === 'MAJOR_PRACTICE') {
+    const currentKey = practiceDeck[currentCardIndex];
+    const currentValue = majorSystem[currentKey];
+
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA]">
+        <div className="p-4 md:p-6 flex justify-between items-start shrink-0">
+           <div className="flex flex-col">
+             <div className="text-xl md:text-2xl font-bold font-mono text-black">
+               {formatMsTime(currentCardElapsedTime)}
+             </div>
+           </div>
+           <button 
+             onClick={finishMajorPractice}
+             className="text-brand-tan font-bold text-base md:text-lg hover:opacity-80 transition-opacity"
+           >
+             Hoziroq tugatish
+           </button>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <div 
+            className="perspective-1000 cursor-pointer"
+            onClick={() => setIsFlipped(!isFlipped)}
+          >
+             <div 
+               className={`relative w-64 h-96 sm:w-80 sm:h-[28rem] transition-all duration-500 preserve-3d ${isFlipped ? 'rotate-y-180' : ''}`}
+               style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+             >
+               {/* Front (Number) */}
+               <div className="absolute inset-0 backface-hidden bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8">
+                 <span className="text-8xl font-medium text-white select-none">{currentKey}</span>
+               </div>
+
+               {/* Back (Word) */}
+               <div 
+                 className="absolute inset-0 backface-hidden bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8 text-center"
+                 style={{ transform: 'rotateY(180deg)' }}
+               >
+                 <span className="text-4xl font-medium text-white break-words select-none">{currentValue}</span>
+               </div>
+             </div>
+          </div>
+
+          <div className="mt-8 text-gray-900 font-bold text-lg">
+            {currentCardIndex + 1}/{practiceDeck.length}
+          </div>
+        </div>
+        
+        {/* Bottom controls removed as per request for clean UI/keyboard navigation */}
+      </div>
+    );
+  }
+
+  if (viewState === 'MAJOR_RESULT') {
+    const totalTime = Object.values(cardTimings).reduce((a, b) => a + b, 0);
+
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA]">
+        <div className="p-4 md:p-6 flex justify-between items-center bg-white border-b border-gray-100 shrink-0 shadow-sm z-10">
+           <button 
+             onClick={() => setViewState('MAJOR_MENU')}
+             className="text-brand-tan font-bold text-lg hover:opacity-80"
+           >
+             Orqaga qaytish
+           </button>
+           <div className="text-lg md:text-xl font-medium text-gray-900">
+             Jami: {formatMsTime(totalTime)}
+           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm p-6 md:p-8">
+             <div className="flex flex-col gap-4">
+               {practiceDeck.map((key, index) => {
+                 const timing = cardTimings[key];
+                 // Only show if we actually visited the card (timing exists)
+                 if (timing === undefined) return null;
+                 
+                 return (
+                   <div key={key} className="flex items-center text-lg md:text-xl border-b border-gray-50 last:border-0 pb-2 last:pb-0">
+                     <span className="font-medium text-gray-900 w-12">{key}</span>
+                     <span className="text-gray-400 mx-2">-</span>
+                     <span className="font-medium text-gray-800 flex-1">{majorSystem[key] || '(No association)'}</span>
+                     <span className="font-mono text-gray-500 text-base">({formatMsTime(timing)})</span>
+                   </div>
+                 );
+               })}
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. RESULT VIEW (NUMBERS)
   if (viewState === 'RESULT') {
     const { totalScore, correctCount, wrongCount } = calculateStats();
     
@@ -737,8 +1003,6 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                 <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={20} />
               </div>
             </div>
-
-            {/* Indicator selector removed */}
 
             <div className="mt-auto md:mt-8">
               <button 
