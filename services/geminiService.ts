@@ -27,7 +27,12 @@ const flashCardSchema: Schema = {
   },
 };
 
-export const generateContentForCategory = async (topic: string): Promise<FlashCardData[]> => {
+export interface GenerationOptions {
+  cursorWidth?: number;
+  separatorLines?: number;
+}
+
+export const generateContentForCategory = async (topic: string, options?: GenerationOptions): Promise<FlashCardData[]> => {
   try {
     const modelId = 'gemini-2.5-flash';
     
@@ -36,7 +41,10 @@ export const generateContentForCategory = async (topic: string): Promise<FlashCa
     or Question (front) and Answer (back) if logic related.`;
 
     if (topic === 'Numbers') {
-      prompt = "Generate 5 sequences of random numbers (5-8 digits long) as the 'front' and repeat them as the 'back'. The user has to memorize them. Hint should be 'Wait and recall'.";
+      const width = options?.cursorWidth || 5;
+      const count = options?.separatorLines || 1;
+      // Construct a prompt that asks for 'count' groups of 'width' digits
+      prompt = `Generate 5 items. Each item front should be a sequence of random numbers formatted as ${count} groups of ${width} digits (e.g. if width 2 count 2: "12 34"). The back should be the same numbers. Hint: 'Memorize the sequence'.`;
     } else if (topic === 'Pictures') {
        prompt = "Generate 5 text descriptions of complex scenes for the 'front' (e.g. 'A blue cat sitting on a red fence'). The 'back' should be the key objects to remember (e.g. 'Blue Cat, Red Fence').";
     } else if (topic === 'Faces and Names') {
