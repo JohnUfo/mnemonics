@@ -14,7 +14,7 @@ const TOTAL_PAGES = 3;
 
 const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   // State for View Management
-  const [viewState, setViewState] = useState<'SETUP' | 'COUNTDOWN' | 'GAME' | 'FLASHCARDS'>(
+  const [viewState, setViewState] = useState<'SETUP' | 'COUNTDOWN' | 'GAME' | 'RECALL' | 'RESULT' | 'FLASHCARDS'>(
     category.id === CategoryId.NUMBERS ? 'SETUP' : 'FLASHCARDS'
   );
 
@@ -23,13 +23,16 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     cursorWidth: 2,
     separatorLines: 2,
     prepTime: 5,
-    indicator: 'Custom'
   });
 
   // Game State
   const [countdown, setCountdown] = useState(5);
   const [gameTime, setGameTime] = useState(300); // 5 minutes in seconds
+  const [recallTime, setRecallTime] = useState(900); // 15 minutes in seconds
+  
   const [numbersGrid, setNumbersGrid] = useState<number[][][]>([]); // [page][row][col]
+  const [userAnswers, setUserAnswers] = useState<string[][][]>([]); // [page][row][col]
+  
   const [currentPage, setCurrentPage] = useState(0);
   const [cursor, setCursor] = useState({ row: 0, col: 0 }); // Cursor position
 
@@ -59,22 +62,47 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   const handleStartGame = () => {
     // Generate Random Numbers
     const grid: number[][][] = [];
+    // Initialize Empty Answers Grid
+    const answersGrid: string[][][] = [];
+
     for (let p = 0; p < TOTAL_PAGES; p++) {
       const pageRows: number[][] = [];
+      const answerRows: string[][] = [];
       for (let r = 0; r < ROWS_PER_PAGE; r++) {
         const rowCols: number[] = [];
+        const answerCols: string[] = [];
         for (let c = 0; c < COLS_PER_ROW; c++) {
           rowCols.push(Math.floor(Math.random() * 10));
+          answerCols.push("");
         }
         pageRows.push(rowCols);
+        answerRows.push(answerCols);
       }
       grid.push(pageRows);
+      answersGrid.push(answerRows);
     }
     setNumbersGrid(grid);
+    setUserAnswers(answersGrid);
     
     // Start Countdown
     setCountdown(config.prepTime);
     setViewState('COUNTDOWN');
+  };
+
+  const handleFinishRecall = () => {
+    setViewState('RESULT');
+  };
+
+  const handleFinishGame = () => {
+    setViewState('RECALL');
+  };
+
+  const handleRestart = () => {
+    setViewState('SETUP');
+    setCurrentPage(0);
+    setCursor({ row: 0, col: 0 });
+    setGameTime(300);
+    setRecallTime(900);
   };
 
   // Countdown Logic
@@ -92,12 +120,30 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   // Game Timer Logic
   useEffect(() => {
     if (viewState === 'GAME') {
+      if (gameTime === 0) {
+        setViewState('RECALL');
+        return;
+      }
       const timer = setInterval(() => {
         setGameTime(t => Math.max(0, t - 1));
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [viewState]);
+  }, [viewState, gameTime]);
+
+  // Recall Timer Logic
+  useEffect(() => {
+    if (viewState === 'RECALL') {
+       if (recallTime === 0) {
+         setViewState('RESULT');
+         return;
+       }
+       const timer = setInterval(() => {
+        setRecallTime(t => Math.max(0, t - 1));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [viewState, recallTime]);
 
   const moveCursorNext = useCallback(() => {
     setCursor(prev => {
@@ -150,6 +196,134 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
       .join('');
   };
 
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
+    let nextRow = row;
+    let nextCol = col;
+    let handled = false;
+
+    if (e.key === 'ArrowRight') {
+      nextCol++;
+      if (nextCol >= COLS_PER_ROW) {
+        nextCol = 0;
+        nextRow++;
+      }
+      handled = true;
+    } else if (e.key === 'ArrowLeft') {
+      nextCol--;
+      if (nextCol < 0) {
+        nextCol = COLS_PER_ROW - 1;
+        nextRow--;
+      }
+      handled = true;
+    } else if (e.key === 'ArrowDown') {
+      nextRow++;
+      handled = true;
+    } else if (e.key === 'ArrowUp') {
+      nextRow--;
+      handled = true;
+    }
+
+    if (handled) {
+      // Check boundaries within the current page
+      if (nextRow >= 0 && nextRow < ROWS_PER_PAGE && nextCol >= 0 && nextCol < COLS_PER_ROW) {
+        e.preventDefault();
+        const nextId = `cell-${nextRow}-${nextCol}`;
+        const element = document.getElementById(nextId);
+        element?.focus();
+      }
+    }
+  };
+
+  const handleAnswerChange = (row: number, col: number, value: string) => {
+    // Only allow single digit or empty
+    if (value.length > 1) return;
+    
+    // Only allow numbers
+    if (value && !/^[0-9]$/.test(value)) return;
+
+    setUserAnswers(prev => {
+      const newAnswers = [...prev];
+      const pageAnswers = [...newAnswers[currentPage]];
+      const rowAnswers = [...pageAnswers[row]];
+      rowAnswers[col] = value;
+      pageAnswers[row] = rowAnswers;
+      newAnswers[currentPage] = pageAnswers;
+      return newAnswers;
+    });
+
+    // Auto-advance if value is entered (length 1)
+    if (value.length === 1) {
+       let nextRow = row;
+       let nextCol = col + 1;
+       if (nextCol >= COLS_PER_ROW) {
+         nextCol = 0;
+         nextRow++;
+       }
+       
+       if (nextRow < ROWS_PER_PAGE) {
+         const nextId = `cell-${nextRow}-${nextCol}`;
+         const element = document.getElementById(nextId);
+         element?.focus();
+       }
+    }
+  };
+
+  const calculateStats = () => {
+    let globalCorrect = 0;
+    let globalWrong = 0;
+    let globalScore = 0;
+
+    for (let p = 0; p < TOTAL_PAGES; p++) {
+      for (let r = 0; r < ROWS_PER_PAGE; r++) {
+        let rowCorrect = 0;
+        let rowWrong = 0;
+        const rowUserAnswers = userAnswers[p]?.[r] || [];
+        const rowCorrectNumbers = numbersGrid[p]?.[r] || [];
+        
+        // Find the last index the user interacted with (non-empty)
+        let lastIndex = -1;
+        for (let i = COLS_PER_ROW - 1; i >= 0; i--) {
+          if (rowUserAnswers[i] && rowUserAnswers[i] !== "") {
+            lastIndex = i;
+            break;
+          }
+        }
+        
+        // If row is completely untouched, skip it for scoring
+        if (lastIndex === -1) continue;
+
+        // Check range up to lastIndex (inclusive)
+        for (let c = 0; c <= lastIndex; c++) {
+          const userVal = rowUserAnswers[c] || "";
+          const correctVal = rowCorrectNumbers[c]?.toString();
+          
+          if (userVal === correctVal) {
+            rowCorrect++;
+          } else if (userVal !== "") {
+            // Only count as wrong if it's NOT empty
+            rowWrong++;
+          }
+        }
+        
+        globalCorrect += rowCorrect;
+        globalWrong += rowWrong;
+        
+        // Row Scoring Rule: If any error exists in the attempted range (ignoring blanks), row score is 0.
+        // Otherwise, score is the count of correct digits.
+        if (rowWrong === 0) {
+          globalScore += rowCorrect;
+        }
+      }
+    }
+    return { totalScore: globalScore, correctCount: globalCorrect, wrongCount: globalWrong };
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
   // --- RENDERERS ---
 
   // 1. COUNTDOWN VIEW
@@ -163,80 +337,316 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     );
   }
 
-  // 2. GAME VIEW (NUMBERS)
-  if (viewState === 'GAME') {
-    const formatTime = (seconds: number) => {
-      const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-      const s = (seconds % 60).toString().padStart(2, '0');
-      return `${m}:${s}`;
-    };
-
+  // 2. RESULT VIEW
+  if (viewState === 'RESULT') {
+    const { totalScore, correctCount, wrongCount } = calculateStats();
+    
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-white overflow-hidden">
-        {/* Header - Transparent, No Background */}
-        <div className="absolute top-0 left-0 w-full p-6 md:p-8 flex justify-between items-start pointer-events-none z-10">
-           <div className="text-3xl md:text-4xl font-bold font-mono text-gray-900 pointer-events-auto">
-             {formatTime(gameTime)}
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA] overflow-hidden font-sans">
+        
+        {/* Main Content - Centered & Compact to avoid scrolling */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-2 pb-2 md:pt-4 flex flex-col w-full items-center justify-center min-h-0">
+          
+          {/* Stats Section - Centered and Styled */}
+          <div className="w-full max-w-3xl mx-auto grid grid-cols-3 mb-2 px-4 shrink-0">
+            <div className="flex flex-col items-center border-r-2 border-red-100 py-1">
+              <div className="text-gray-900 text-xs sm:text-sm xl:text-base mb-1 font-medium text-center">To'g'ri javoblar</div>
+              <div className="text-2xl sm:text-3xl xl:text-4xl font-bold text-gray-900">{correctCount}</div>
+            </div>
+            <div className="flex flex-col items-center border-r-2 border-red-100 py-1">
+              <div className="text-gray-900 text-xs sm:text-sm xl:text-base mb-1 font-medium text-center">Xato javoblar</div>
+              <div className="text-2xl sm:text-3xl xl:text-4xl font-bold text-gray-900">{wrongCount}</div>
+            </div>
+            <div className="flex flex-col items-center py-1">
+              <div className="text-gray-900 text-xs sm:text-sm xl:text-base mb-1 font-medium text-center">Hisob</div>
+              <div className="text-2xl sm:text-3xl xl:text-4xl font-bold text-gray-900">{totalScore}</div>
+            </div>
+          </div>
+
+          {/* Grid Area - Centered & Scrollable */}
+          <div className="w-full overflow-x-auto flex flex-col items-center px-2">
+            <div className="min-w-fit bg-white p-2 xl:p-4 rounded-xl shadow-sm border border-gray-100 mx-auto">
+              {numbersGrid[currentPage]?.map((row, rowIndex) => {
+                 const rowUserAnswers = userAnswers[currentPage]?.[rowIndex] || [];
+                 // Find last filled index for this row to determine coloring range
+                 let lastIndex = -1;
+                 for (let i = COLS_PER_ROW - 1; i >= 0; i--) {
+                   if (rowUserAnswers[i] && rowUserAnswers[i] !== "") {
+                     lastIndex = i;
+                     break;
+                   }
+                 }
+
+                return (
+                  <div key={rowIndex} className="flex mb-[2px]">
+                    {/* Row Number */}
+                    <div className="w-6 md:w-8 text-gray-300 text-right mr-3 text-[10px] sm:text-xs select-none font-mono pt-1">
+                      {rowIndex + 1}
+                    </div>
+                    
+                    <div className="flex flex-col">
+                      {/* User Input Row */}
+                      <div className="flex">
+                        {row.map((digit, colIndex) => {
+                          const userVal = rowUserAnswers[colIndex] || "";
+                          const correctVal = digit.toString();
+                          const isChecked = colIndex <= lastIndex;
+                          
+                          let textColorClass = "text-transparent"; 
+                          
+                          if (isChecked) {
+                            if (userVal === correctVal) {
+                               textColorClass = "text-green-600";
+                            } else if (userVal !== "") {
+                               textColorClass = "text-red-600"; // Wrong
+                            }
+                            // Empty cells remain transparent/neutral even if checked range
+                          }
+
+                          const finalDisplay = isChecked ? (userVal === "" ? digit : userVal) : "";
+
+                          const showSeparator = (colIndex + 1) % config.separatorLines === 0 && colIndex < COLS_PER_ROW - 1;
+                          
+                          return (
+                            <div 
+                              key={`user-${colIndex}`}
+                              className={`
+                                w-3.5 h-5 text-[10px] 
+                                sm:w-5 sm:h-7 sm:text-xs 
+                                xl:w-6 xl:h-8 xl:text-sm 
+                                2xl:w-8 2xl:h-10 2xl:text-lg 
+                                flex items-center justify-center font-bold border border-gray-100 bg-white
+                                ${textColorClass}
+                                ${showSeparator ? 'mr-0.5 sm:mr-1' : ''}
+                              `}
+                            >
+                              {finalDisplay}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Correct Answer Row */}
+                      <div className="flex">
+                        {row.map((digit, colIndex) => {
+                          const showSeparator = (colIndex + 1) % config.separatorLines === 0 && colIndex < COLS_PER_ROW - 1;
+                          return (
+                            <div 
+                              key={`correct-${colIndex}`}
+                              className={`
+                                w-3.5 h-5 text-[10px] 
+                                sm:w-5 sm:h-7 sm:text-xs 
+                                xl:w-6 xl:h-8 xl:text-sm 
+                                2xl:w-8 2xl:h-10 2xl:text-lg 
+                                flex items-center justify-center font-bold border border-gray-100 bg-white text-black
+                                ${showSeparator ? 'mr-0.5 sm:mr-1' : ''}
+                              `}
+                            >
+                              {digit}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 md:p-6 flex flex-col items-center gap-4 shrink-0 bg-[#F8F9FA] border-t border-gray-100 w-full">
+           <div className="flex gap-4">
+              {Array.from({ length: TOTAL_PAGES }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i)}
+                  className={`
+                    w-10 h-10 md:w-12 md:h-12 rounded-xl text-lg font-medium transition-all
+                    ${currentPage === i 
+                      ? 'bg-brand-tan text-white shadow-lg shadow-orange-900/20' 
+                      : 'bg-white text-gray-800 hover:bg-gray-50 border border-gray-100 shadow-sm'}
+                  `}
+                >
+                  {i + 1}
+                </button>
+              ))}
            </div>
-           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 pointer-events-auto transition-colors">
-             <X size={32} />
+           
+           <button 
+             onClick={handleRestart}
+             className="w-full max-w-sm bg-brand-tan hover:bg-[#c98e62] text-white font-bold text-base md:text-lg py-3 rounded-xl shadow-lg shadow-orange-900/10 active:scale-[0.98] transition-all"
+           >
+             Restart
+           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. RECALL VIEW
+  if (viewState === 'RECALL') {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA] overflow-hidden">
+        {/* Header */}
+        <div className="p-4 md:p-6 flex justify-between items-center shrink-0">
+           <div className="text-2xl sm:text-3xl xl:text-4xl font-bold font-mono text-black">
+             {formatTime(recallTime)}
+           </div>
+           <button 
+             onClick={handleFinishRecall} 
+             className="text-brand-tan font-bold text-base sm:text-lg xl:text-xl hover:opacity-80 transition-opacity"
+           >
+             Hoziroq tugatish
            </button>
         </div>
 
-        {/* Grid Area */}
-        <div className="flex-1 overflow-auto pt-24 pb-4 px-2 md:px-4 flex justify-center items-center">
-          <div className="font-mono leading-relaxed select-none">
-            {numbersGrid[currentPage]?.map((row, rowIndex) => (
-              <div key={rowIndex} className="flex items-center mb-1 md:mb-2">
-                {/* Row Number */}
-                <span className="w-8 md:w-12 text-gray-300 text-right mr-4 md:mr-8 text-sm md:text-base select-none">
-                  {rowIndex + 1}
-                </span>
-                
-                {/* Row Digits */}
-                <div className="flex flex-wrap max-w-[95vw] md:max-w-none">
-                  {row.map((digit, colIndex) => {
-                    const isCursor = 
-                      rowIndex === cursor.row && 
-                      colIndex >= cursor.col && 
-                      colIndex < cursor.col + config.cursorWidth;
-
-                    const showSeparator = (colIndex + 1) % config.separatorLines === 0 && colIndex < COLS_PER_ROW - 1;
-
-                    return (
-                      <span 
+        {/* Grid Input Area - Centered & Scrollable */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 flex flex-col w-full items-center justify-center min-h-0">
+          <div className="w-full overflow-x-auto flex justify-center">
+            <div className="min-w-fit select-none mx-auto">
+              {userAnswers[currentPage]?.map((row, rowIndex) => (
+                <div key={rowIndex} className="flex items-center mb-[2px]">
+                  {/* Row Number */}
+                  <span className="w-6 text-[10px] sm:text-xs mr-2 sm:w-8 sm:mr-4 lg:w-10 lg:mr-6 text-gray-300 text-right select-none">
+                    {rowIndex + 1}
+                  </span>
+                  
+                  {/* Input Cells */}
+                  <div className="flex flex-wrap gap-[1px] md:gap-[2px]">
+                    {row.map((val, colIndex) => (
+                      <input
                         key={colIndex}
+                        id={`cell-${rowIndex}-${colIndex}`}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={val}
+                        onKeyDown={(e) => handleInputKeyDown(e, rowIndex, colIndex)}
+                        onChange={(e) => handleAnswerChange(rowIndex, colIndex, e.target.value)}
                         className={`
-                          w-7 md:w-11 text-center inline-block text-2xl md:text-4xl font-medium
-                          ${isCursor ? 'bg-brand-tan text-black font-bold' : 'text-gray-900'}
-                          ${showSeparator ? 'border-r-2 border-orange-200/50' : ''}
+                          w-3.5 h-5 text-[10px] 
+                          sm:w-5 sm:h-7 sm:text-xs 
+                          xl:w-6 xl:h-8 xl:text-sm 
+                          2xl:w-8 2xl:h-10 2xl:text-lg 
+                          text-center border border-gray-200 rounded-[2px] md:rounded font-medium focus:border-brand-tan focus:ring-1 focus:ring-brand-tan outline-none bg-white text-gray-900
                         `}
-                      >
-                        {digit}
-                      </span>
-                    );
-                  })}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Pagination */}
+        <div className="p-6 flex justify-center shrink-0 w-full">
+           <div className="flex gap-4">
+              {Array.from({ length: TOTAL_PAGES }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i)}
+                  className={`
+                    w-10 h-10 md:w-12 md:h-12 rounded-xl text-lg font-medium transition-all
+                    ${currentPage === i 
+                      ? 'bg-brand-tan text-white shadow-lg shadow-orange-900/20' 
+                      : 'bg-white text-gray-800 hover:bg-gray-50 border border-gray-100 shadow-sm'}
+                  `}
+                >
+                  {i + 1}
+                </button>
+              ))}
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. GAME VIEW (NUMBERS MEMORIZATION)
+  if (viewState === 'GAME') {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-white overflow-hidden">
+        {/* Header - Transparent, No Background */}
+        <div className="absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-center pointer-events-none z-10">
+           <div className="text-2xl sm:text-3xl xl:text-4xl font-bold font-mono text-gray-900 pointer-events-auto">
+             {formatTime(gameTime)}
+           </div>
+           
+           <div className="flex items-center gap-4 pointer-events-auto">
+             <button 
+               onClick={handleFinishGame}
+               className="text-brand-tan font-bold text-base sm:text-lg xl:text-xl hover:opacity-80 transition-opacity"
+             >
+               Hoziroq tugatish
+             </button>
+             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-colors">
+               <X size={28} />
+             </button>
+           </div>
+        </div>
+
+        {/* Grid Area - Centered & Scrollable */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-20 pb-4 px-2 md:px-4 flex flex-col w-full items-center justify-center min-h-0">
+          <div className="w-full overflow-x-auto flex justify-center">
+            <div className="min-w-fit font-mono leading-relaxed select-none mx-auto px-4 self-center">
+              {numbersGrid[currentPage]?.map((row, rowIndex) => (
+                <div key={rowIndex} className="flex items-center mb-1 md:mb-2">
+                  {/* Row Number */}
+                  <span className="w-6 text-[10px] sm:text-xs mr-2 sm:w-8 sm:mr-4 lg:w-10 lg:mr-6 text-gray-300 text-right select-none">
+                    {rowIndex + 1}
+                  </span>
+                  
+                  {/* Row Digits */}
+                  <div className="flex">
+                    {row.map((digit, colIndex) => {
+                      const isCursor = 
+                        rowIndex === cursor.row && 
+                        colIndex >= cursor.col && 
+                        colIndex < cursor.col + config.cursorWidth;
+
+                      const showSeparator = (colIndex + 1) % config.separatorLines === 0 && colIndex < COLS_PER_ROW - 1;
+
+                      return (
+                        <span 
+                          key={colIndex}
+                          className={`
+                            w-3.5 h-5 text-[10px] 
+                            sm:w-5 sm:h-7 sm:text-base 
+                            xl:w-6 xl:h-8 xl:text-lg 
+                            2xl:w-8 2xl:h-10 2xl:text-2xl 
+                            text-center inline-block font-medium
+                            ${isCursor ? 'bg-brand-tan text-black font-bold' : 'text-gray-900'}
+                            ${showSeparator ? 'border-r-2 border-orange-200/50' : ''}
+                          `}
+                        >
+                          {digit}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Footer Controls */}
-        <div className="pb-10 pt-4 px-4 flex flex-col items-center gap-6 bg-white shrink-0 z-20">
+        <div className="pb-8 pt-4 px-4 flex flex-col items-center gap-4 bg-white shrink-0 z-20 w-full">
            
            {/* Navigation Controls */}
-           <div className="flex items-center justify-center gap-12 md:gap-24 w-full">
+           <div className="flex items-center justify-center gap-8 md:gap-16 w-full">
               <button 
                 onClick={moveCursorPrev}
                 className="text-gray-300 hover:text-brand-tan transition-colors active:scale-95 p-2"
               >
-                <ArrowLeft size={48} strokeWidth={1.5} />
+                <ArrowLeft size={36} strokeWidth={1.5} />
               </button>
               
               {/* Highlighted Value Display */}
-              <div className="bg-orange-50 rounded-xl px-6 py-3 min-w-[120px] text-center">
-                <span className="text-3xl md:text-4xl text-gray-800 font-bold font-mono tracking-widest">
+              <div className="bg-orange-50 rounded-xl px-4 py-2 min-w-[100px] text-center">
+                <span className="text-2xl md:text-3xl text-gray-800 font-bold font-mono tracking-widest">
                    {getCurrentNumberString()}
                 </span>
               </div>
@@ -245,7 +655,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                  onClick={moveCursorNext}
                  className="text-gray-300 hover:text-brand-tan transition-colors active:scale-95 p-2"
               >
-                 <ArrowRight size={48} strokeWidth={1.5} />
+                 <ArrowRight size={36} strokeWidth={1.5} />
               </button>
            </div>
 
@@ -256,7 +666,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                   key={i}
                   onClick={() => setCurrentPage(i)}
                   className={`
-                    w-12 h-12 rounded-lg text-lg font-bold transition-all
+                    w-10 h-10 rounded-lg text-lg font-bold transition-all
                     ${currentPage === i 
                       ? 'bg-brand-tan text-white shadow-lg shadow-orange-900/20' 
                       : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}
@@ -272,13 +682,13 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     );
   }
 
-  // 3. SETUP VIEW (Only for Numbers)
+  // 5. SETUP VIEW (Only for Numbers)
   if (viewState === 'SETUP') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-50 md:bg-gray-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-[#F8F9FA] md:bg-white w-full max-w-2xl md:rounded-3xl md:shadow-2xl overflow-hidden flex flex-col h-full md:h-auto md:max-h-[90vh]">
+        <div className="bg-[#F8F9FA] md:bg-white w-full max-w-2xl md:rounded-3xl md:shadow-2xl overflow-hidden flex flex-col h-full md:h-auto max-h-[90vh]">
           
-          <div className="flex items-center justify-between p-6 bg-transparent md:border-b border-gray-100">
+          <div className="flex items-center justify-between p-6 bg-transparent md:border-b border-gray-100 shrink-0">
             <button 
               onClick={onClose}
               className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-900"
@@ -289,7 +699,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
             <div className="w-10"></div>
           </div>
 
-          <div className="flex-1 p-6 flex flex-col gap-6">
+          <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium text-gray-900">Kursor kengligi</label>
@@ -319,30 +729,16 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                   onChange={(e) => setConfig({...config, prepTime: Number(e.target.value)})}
                   className="w-full p-4 bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-orange-200 transition-shadow text-gray-900 font-medium cursor-pointer"
                 >
-                  <option value={3}>3</option>
                   <option value={5}>5</option>
                   <option value={10}>10</option>
                   <option value={15}>15</option>
+                  <option value={20}>20</option>
                 </select>
                 <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={20} />
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-gray-900">Ko'rsatkichni tanlash</label>
-              <div className="relative">
-                <select 
-                  value={config.indicator}
-                  onChange={(e) => setConfig({...config, indicator: e.target.value})}
-                  className="w-full p-4 bg-white border border-gray-200 rounded-xl appearance-none focus:outline-none focus:ring-2 focus:ring-orange-200 transition-shadow text-gray-900 font-medium cursor-pointer"
-                >
-                  <option value="Custom">Custom</option>
-                  <option value="Fixed">Fixed</option>
-                  <option value="Random">Random</option>
-                </select>
-                <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-400 pointer-events-none" size={20} />
-              </div>
-            </div>
+            {/* Indicator selector removed */}
 
             <div className="mt-auto md:mt-8">
               <button 
@@ -358,7 +754,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     );
   }
 
-  // 4. FLASHCARD VIEW (Legacy/Other Categories)
+  // 6. FLASHCARD VIEW (Legacy/Other Categories)
   const currentCard = cards[currentCardIndex];
   
   return (

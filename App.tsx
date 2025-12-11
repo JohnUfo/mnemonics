@@ -61,18 +61,18 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans selection:bg-orange-200">
       
       {/* Main Content Container */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-20">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 2xl:py-20">
         
         {/* Header Section */}
-        <header className="mb-8 md:mb-12">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 tracking-tight mb-2">
+        <header className="mb-6 sm:mb-8 lg:mb-10 2xl:mb-12">
+          <h1 className="text-3xl sm:text-4xl 2xl:text-5xl font-extrabold text-gray-900 tracking-tight mb-2">
             Yo'nalishlar
           </h1>
-          <p className="text-gray-500 text-base md:text-lg">Select a category to start training your memory.</p>
+          <p className="text-gray-500 text-sm sm:text-base 2xl:text-lg">Select a category to start training your memory.</p>
         </header>
 
         {/* Grid Layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 2xl:gap-8">
           {CATEGORIES.map((category) => (
             <DashboardCard
               key={category.id}
