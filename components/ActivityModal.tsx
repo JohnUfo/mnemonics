@@ -538,26 +538,49 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
              >
                {/* Front (Number) */}
-               <div className="absolute inset-0 backface-hidden bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8">
+               <div 
+                 className="absolute inset-0 bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8"
+                 style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+               >
                  <span className="text-8xl font-medium text-white select-none">{currentKey}</span>
                </div>
 
                {/* Back (Word) */}
                <div 
-                 className="absolute inset-0 backface-hidden bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8 text-center"
-                 style={{ transform: 'rotateY(180deg)' }}
+                 className="absolute inset-0 bg-[#D99F72] rounded-xl shadow-xl flex items-center justify-center p-8 text-center"
+                 style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                >
                  <span className="text-4xl font-medium text-white break-words select-none">{currentValue}</span>
                </div>
              </div>
           </div>
 
-          <div className="mt-8 text-gray-900 font-bold text-lg">
-            {currentCardIndex + 1}/{practiceDeck.length}
+          <div className="mt-8 md:mt-12 flex items-center justify-center gap-8 md:gap-16 w-full">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePrevMajorCard();
+              }}
+              className={`text-gray-300 hover:text-brand-tan transition-colors active:scale-95 p-2 ${currentCardIndex === 0 ? 'opacity-0 cursor-default pointer-events-none' : ''}`}
+            >
+              <ArrowLeft size={36} strokeWidth={1.5} />
+            </button>
+
+            <div className="text-gray-900 font-bold text-lg md:text-xl font-mono select-none">
+              {currentCardIndex + 1}/{practiceDeck.length}
+            </div>
+
+            <button 
+               onClick={(e) => {
+                 e.stopPropagation();
+                 handleNextMajorCard();
+               }}
+               className={`text-gray-300 hover:text-brand-tan transition-colors active:scale-95 p-2`}
+            >
+               <ArrowRight size={36} strokeWidth={1.5} />
+            </button>
           </div>
         </div>
-        
-        {/* Bottom controls removed as per request for clean UI/keyboard navigation */}
       </div>
     );
   }
@@ -566,33 +589,37 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
     const totalTime = Object.values(cardTimings).reduce((a, b) => a + b, 0);
 
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA]">
-        <div className="p-4 md:p-6 flex justify-between items-center bg-white border-b border-gray-100 shrink-0 shadow-sm z-10">
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA] overflow-hidden">
+        
+        {/* Header Section (No Navbar style) */}
+        <div className="w-full max-w-3xl mx-auto p-6 md:p-8 flex justify-between items-end shrink-0 z-10">
            <button 
              onClick={() => setViewState('MAJOR_MENU')}
-             className="text-brand-tan font-bold text-lg hover:opacity-80"
+             className="text-[#D99F72] font-bold text-lg md:text-xl hover:opacity-80 transition-opacity"
            >
              Orqaga qaytish
            </button>
-           <div className="text-lg md:text-xl font-medium text-gray-900">
+           <div className="text-xl md:text-2xl font-medium text-gray-900 font-mono tracking-tight">
              Jami: {formatMsTime(totalTime)}
            </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm p-6 md:p-8">
-             <div className="flex flex-col gap-4">
+        {/* Scrollable List Container */}
+        <div className="flex-1 overflow-y-auto px-4 pb-8 w-full flex justify-center">
+          <div className="w-full max-w-3xl bg-white rounded-3xl shadow-sm border border-gray-100/50 overflow-hidden">
+             <div className="flex flex-col">
                {practiceDeck.map((key, index) => {
                  const timing = cardTimings[key];
-                 // Only show if we actually visited the card (timing exists)
                  if (timing === undefined) return null;
-                 
+
                  return (
-                   <div key={key} className="flex items-center text-lg md:text-xl border-b border-gray-50 last:border-0 pb-2 last:pb-0">
-                     <span className="font-medium text-gray-900 w-12">{key}</span>
-                     <span className="text-gray-400 mx-2">-</span>
-                     <span className="font-medium text-gray-800 flex-1">{majorSystem[key] || '(No association)'}</span>
-                     <span className="font-mono text-gray-500 text-base">({formatMsTime(timing)})</span>
+                   <div key={key} className="group flex items-center justify-between py-4 px-6 md:px-8 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                     <div className="flex items-center gap-6 md:gap-8">
+                       <span className="font-bold text-xl md:text-2xl text-gray-900 w-10 text-left font-mono">{key}</span>
+                       <span className="text-gray-300 font-light text-xl">-</span>
+                       <span className="font-bold text-lg md:text-xl text-gray-800">{majorSystem[key]}</span>
+                     </div>
+                     <span className="font-mono text-gray-400 text-sm md:text-base tracking-wider opacity-60 group-hover:opacity-100 transition-opacity">({formatMsTime(timing)})</span>
                    </div>
                  );
                })}
@@ -1056,7 +1083,10 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                 onClick={() => setIsFlipped(!isFlipped)}
                 style={{ transformStyle: 'preserve-3d', transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
               >
-                <div className="absolute inset-0 backface-hidden bg-white rounded-2xl shadow-lg border-2 border-orange-100 flex flex-col items-center justify-center p-6 md:p-8 text-center">
+                <div 
+                  className="absolute inset-0 bg-white rounded-2xl shadow-lg border-2 border-orange-100 flex flex-col items-center justify-center p-6 md:p-8 text-center"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                >
                   <span className="text-[10px] md:text-xs font-bold text-orange-400 uppercase tracking-widest mb-2 md:mb-4">Question</span>
                   <p className="text-xl md:text-2xl font-bold text-gray-800 line-clamp-6">{currentCard.front}</p>
                   {currentCard.hint && (
@@ -1065,8 +1095,8 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
                 </div>
 
                 <div 
-                  className="absolute inset-0 backface-hidden bg-brand-tan rounded-2xl shadow-lg flex flex-col items-center justify-center p-6 md:p-8 text-center"
-                  style={{ transform: 'rotateY(180deg)' }}
+                  className="absolute inset-0 bg-brand-tan rounded-2xl shadow-lg flex flex-col items-center justify-center p-6 md:p-8 text-center"
+                  style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
                 >
                   <span className="text-[10px] md:text-xs font-bold text-white/80 uppercase tracking-widest mb-2 md:mb-4">Answer</span>
                   <p className="text-xl md:text-2xl font-bold text-white line-clamp-6">{currentCard.back}</p>
