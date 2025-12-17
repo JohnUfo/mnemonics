@@ -21,4 +21,5 @@ export interface FlashCardData {
   front: string;
   back: string;
   hint?: string;
+  imageUrl?: string;
 }
