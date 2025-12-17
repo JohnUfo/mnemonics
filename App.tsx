@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Hash, 
-  Languages, 
-  Type, 
-  Smile, 
-  StickyNote, 
+import {
+  Hash,
+  Languages,
+  Type,
+  Smile,
+  StickyNote,
   Image as ImageIcon,
   Loader2,
   User,
@@ -12,11 +12,17 @@ import {
   LogOut,
   X,
   Check,
-  AlertCircle
+  AlertCircle,
+  Swords,
+  Trophy,
+  Home
 } from 'lucide-react';
 import DashboardCard from './components/DashboardCard';
 import ActivityModal from './components/ActivityModal';
 import AuthPage from './components/AuthPage';
+import Leaderboard from './components/Leaderboard';
+import MatchmakingLobby from './components/MatchmakingLobby';
+import CompetitiveMatch from './components/CompetitiveMatch';
 import { CategoryId, CategoryItem } from './types';
 import { supabase } from './services/supabase';
 
@@ -61,6 +67,8 @@ const CATEGORIES: CategoryItem[] = [
 
 const FINISHED_CATEGORIES = [CategoryId.NUMBERS, CategoryId.FLASH_CARDS];
 
+type ViewMode = 'practice' | 'competitive' | 'leaderboard' | 'match';
+
 const App: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
   const [session, setSession] = useState<any>(null);
@@ -69,6 +77,8 @@ const App: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('practice');
+  const [currentMatchId, setCurrentMatchId] = useState<string | null>(null);
 
   // Profile Form State
   const [username, setUsername] = useState('');
@@ -143,54 +153,143 @@ const App: React.FC = () => {
 
   if (!session) return <AuthPage />;
 
+  // Handle match found
+  const handleMatchFound = (matchId: string) => {
+    setCurrentMatchId(matchId);
+    setViewMode('match');
+  };
+
+  // Handle match exit
+  const handleMatchExit = () => {
+    setCurrentMatchId(null);
+    setViewMode('competitive');
+  };
+
+  // Render competitive match view
+  if (viewMode === 'match' && currentMatchId && profile) {
+    return (
+      <CompetitiveMatch
+        matchId={currentMatchId}
+        userId={profile.id}
+        onExit={handleMatchExit}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans selection:bg-orange-200">
-      
-      {/* Dashboard Header */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 2xl:py-20">
-        <header className="mb-6 sm:mb-8 lg:mb-10 2xl:mb-12 flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl sm:text-4xl 2xl:text-5xl font-extrabold text-gray-900 tracking-tight mb-2">
-              Yo'nalishlar
-            </h1>
-            <p className="text-gray-500 text-sm sm:text-base 2xl:text-lg">Xotirani mashq qilish uchun yo'nalishni tanlang.</p>
-          </div>
-          
-          {/* Profile Quick Access */}
-          <button 
-            onClick={() => setShowProfileModal(true)}
-            className="flex items-center gap-3 bg-white p-2 pr-4 rounded-full shadow-sm border border-gray-100 hover:border-orange-200 transition-all active:scale-95"
-          >
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="User" className="w-10 h-10 rounded-full object-cover" />
-            ) : (
-              <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-brand-tan">
-                <User size={20} />
-              </div>
-            )}
-            <div className="hidden sm:flex flex-col items-start">
-              <span className="text-sm font-bold text-gray-900 leading-tight">
-                {profile?.full_name || 'Foydalanuvchi'}
-              </span>
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                @{profile?.username || 'user'}
-              </span>
-            </div>
-          </button>
-        </header>
 
-        {/* Categories Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 2xl:gap-8">
-          {CATEGORIES.map((category) => (
-            <DashboardCard
-              key={category.id}
-              title={category.title}
-              icon={category.icon}
-              disabled={!FINISHED_CATEGORIES.includes(category.id)}
-              onClick={() => setSelectedCategory(category)}
-            />
-          ))}
+      {/* Navigation Bar */}
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('practice')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
+                  viewMode === 'practice'
+                    ? 'bg-orange-100 text-brand-tan'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Home size={20} />
+                <span className="hidden sm:inline">Practice</span>
+              </button>
+              <button
+                onClick={() => setViewMode('competitive')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
+                  viewMode === 'competitive'
+                    ? 'bg-orange-100 text-brand-tan'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Swords size={20} />
+                <span className="hidden sm:inline">Competitive</span>
+              </button>
+              <button
+                onClick={() => setViewMode('leaderboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${
+                  viewMode === 'leaderboard'
+                    ? 'bg-orange-100 text-brand-tan'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Trophy size={20} />
+                <span className="hidden sm:inline">Leaderboard</span>
+              </button>
+            </div>
+
+            {/* Profile Quick Access */}
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center gap-3 bg-gray-50 p-2 pr-4 rounded-full hover:bg-gray-100 transition-all active:scale-95"
+            >
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} alt="User" className="w-10 h-10 rounded-full object-cover" />
+              ) : (
+                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center text-brand-tan">
+                  <User size={20} />
+                </div>
+              )}
+              <div className="hidden sm:flex flex-col items-start">
+                <span className="text-sm font-bold text-gray-900 leading-tight">
+                  {profile?.full_name || 'Foydalanuvchi'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                    @{profile?.username || 'user'}
+                  </span>
+                  <span className="text-xs font-bold text-brand-tan">
+                    {profile?.rating || 1500}
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
         </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+        {viewMode === 'practice' && (
+          <>
+            <header className="mb-6 sm:mb-8 lg:mb-10">
+              <h1 className="text-3xl sm:text-4xl 2xl:text-5xl font-extrabold text-gray-900 tracking-tight mb-2">
+                Yo'nalishlar
+              </h1>
+              <p className="text-gray-500 text-sm sm:text-base 2xl:text-lg">Xotirani mashq qilish uchun yo'nalishni tanlang.</p>
+            </header>
+
+            {/* Categories Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 2xl:gap-8">
+              {CATEGORIES.map((category) => (
+                <DashboardCard
+                  key={category.id}
+                  title={category.title}
+                  icon={category.icon}
+                  disabled={!FINISHED_CATEGORIES.includes(category.id)}
+                  onClick={() => setSelectedCategory(category)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {viewMode === 'competitive' && profile && (
+          <MatchmakingLobby
+            userId={profile.id}
+            userProfile={{
+              username: profile.username,
+              rating: profile.rating || 1500,
+              avatar_url: profile.avatar_url
+            }}
+            onMatchFound={handleMatchFound}
+          />
+        )}
+
+        {viewMode === 'leaderboard' && (
+          <Leaderboard currentUserId={profile?.id} />
+        )}
       </main>
 
       {/* Profile Modal */}
