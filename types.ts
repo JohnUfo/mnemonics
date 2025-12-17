@@ -9,14 +9,11 @@ export enum CategoryId {
   PICTURES = 'pictures',
 }
 
-export type CategoryStatus = 'ready' | 'wip';
-
 export interface CategoryItem {
   id: CategoryId;
   title: string;
   icon: LucideIcon;
   isNew?: boolean;
-  status: CategoryStatus;
   promptTopic: string;
 }
 
@@ -24,14 +21,4 @@ export interface FlashCardData {
   front: string;
   back: string;
   hint?: string;
-}
-
-export interface User {
-  id: string; // UUID from Supabase
-  username: string;
-  full_name: string;
-  email?: string;
-  is_online: boolean;
-  avatar_id: number;
-  last_username_change?: string | null; // ISO Date string
 }
