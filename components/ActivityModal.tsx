@@ -586,7 +586,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
   }
 
   if (viewState === 'MAJOR_RESULT') {
-    const totalTime = (Object.values(cardTimings) as number[]).reduce((a: number, b: number) => a + b, 0);
+    const totalTime = Object.values(cardTimings).reduce((a, b) => a + b, 0);
 
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-[#F8F9FA] overflow-hidden">
@@ -610,7 +610,7 @@ const ActivityModal: React.FC<ActivityModalProps> = ({ category, onClose }) => {
              <div className="flex flex-col">
                {practiceDeck.map((key, index) => {
                  const timing = cardTimings[key];
-                 if (typeof timing !== 'number') return null;
+                 if (timing === undefined) return null;
 
                  return (
                    <div key={key} className="group flex items-center justify-between py-4 px-6 md:px-8 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">

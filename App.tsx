@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Hash, 
   Languages, 
   Type, 
   Smile, 
   StickyNote, 
-  Image as ImageIcon,
-  LogOut
+  Image as ImageIcon 
 } from 'lucide-react';
-import { Session } from '@supabase/supabase-js';
-import { supabase } from './lib/supabase';
 import DashboardCard from './components/DashboardCard';
 import ActivityModal from './components/ActivityModal';
-import LoginPage from './components/LoginPage';
 import { CategoryId, CategoryItem } from './types';
 
 // Data strictly matching the screenshot structure
@@ -59,68 +55,20 @@ const CATEGORIES: CategoryItem[] = [
 ];
 
 const App: React.FC = () => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<CategoryItem | null>(null);
-
-  useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-tan"></div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <LoginPage />;
-  }
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-gray-900 font-sans selection:bg-orange-200">
       
       {/* Main Content Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 2xl:py-20 relative">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 2xl:py-20">
         
-        {/* Logout Button (Top Right) */}
-        <div className="absolute top-4 right-4 sm:top-8 sm:right-8">
-           <button 
-             onClick={handleLogout}
-             className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow-sm border border-gray-100 text-sm font-medium text-gray-600 hover:text-red-500 hover:bg-red-50 transition-colors"
-           >
-             <LogOut size={16} />
-             <span className="hidden sm:inline">Chiqish</span>
-           </button>
-        </div>
-
         {/* Header Section */}
         <header className="mb-6 sm:mb-8 lg:mb-10 2xl:mb-12">
           <h1 className="text-3xl sm:text-4xl 2xl:text-5xl font-extrabold text-gray-900 tracking-tight mb-2">
             Yo'nalishlar
           </h1>
-          <p className="text-gray-500 text-sm sm:text-base 2xl:text-lg">
-            Welcome back, {session.user.user_metadata.full_name || session.user.email}
-          </p>
+          <p className="text-gray-500 text-sm sm:text-base 2xl:text-lg">Select a category to start training your memory.</p>
         </header>
 
         {/* Grid Layout */}
