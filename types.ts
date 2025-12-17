@@ -29,7 +29,9 @@ export interface FlashCardData {
 export interface User {
   id: string; // UUID from Supabase
   username: string;
+  full_name: string;
   email?: string;
   is_online: boolean;
   avatar_id: number;
+  last_username_change?: string | null; // ISO Date string
 }

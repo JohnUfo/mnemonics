@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, ArrowRight, X, Users, Globe, ChevronRight } from 'lucide-react';
 import { User } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface NumbersPageProps {
   onBack: () => void;
@@ -10,15 +11,6 @@ interface NumbersPageProps {
 const ROWS_PER_PAGE = 12;
 const COLS_PER_ROW = 40;
 const TOTAL_PAGES = 3;
-
-// Mock Online Users (In real implementation, fetch from Supabase 'profiles' where is_online = true)
-const MOCK_USERS = [
-  { name: "Azizbek", status: "In Game", score: 120 },
-  { name: "Malika", status: "Idle", score: 0 },
-  { name: "Jamshid", status: "Competing", score: 85 },
-  { name: "Sardor", status: "Idle", score: 0 },
-  { name: "Dildora", status: "In Game", score: 200 },
-];
 
 const NumbersPage: React.FC<NumbersPageProps> = ({ onBack, currentUser }) => {
   // View State
@@ -40,6 +32,41 @@ const NumbersPage: React.FC<NumbersPageProps> = ({ onBack, currentUser }) => {
   const [userAnswers, setUserAnswers] = useState<string[][][]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [cursor, setCursor] = useState({ row: 0, col: 0 });
+
+  // Online Users State
+  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
+
+  // Fetch online users
+  useEffect(() => {
+    const fetchOnlineUsers = async () => {
+        try {
+            const { data } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('is_online', true)
+                .neq('id', currentUser.id)
+                .limit(20);
+            
+            if (data) {
+                // Map DB result to User type (ignoring some inconsistencies if any, mainly need username/fullname)
+                setOnlineUsers(data.map(u => ({
+                    id: u.id,
+                    username: u.username,
+                    full_name: u.full_name || 'User',
+                    is_online: true,
+                    avatar_id: u.avatar_id || 1
+                })));
+            }
+        } catch (err) {
+            console.error("Error fetching online users:", err);
+        }
+    };
+
+    fetchOnlineUsers();
+    // Poll every 15 seconds to keep list reasonably fresh
+    const interval = setInterval(fetchOnlineUsers, 15000);
+    return () => clearInterval(interval);
+  }, [currentUser.id]);
 
   // --- LOGIC COPIED & ADAPTED FROM ActivityModal ---
   
@@ -213,20 +240,23 @@ const NumbersPage: React.FC<NumbersPageProps> = ({ onBack, currentUser }) => {
         <h3 className="font-bold text-lg">Online Users</h3>
       </div>
       <div className="flex-1 overflow-y-auto space-y-4">
-        {MOCK_USERS.map((user, i) => (
-          <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-             <div className="flex items-center gap-3">
-               <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-brand-tan font-bold text-xs">
-                 {user.name[0]}
-               </div>
-               <div>
-                 <p className="text-sm font-bold text-gray-900">{user.name}</p>
-                 <p className="text-xs text-gray-500">{user.status}</p>
-               </div>
-             </div>
-             {user.score > 0 && <span className="text-xs font-mono font-bold text-green-600">{user.score}</span>}
-          </div>
-        ))}
+        {onlineUsers.length === 0 ? (
+            <div className="text-gray-400 text-sm text-center py-4">No other users online.</div>
+        ) : (
+            onlineUsers.map((user, i) => (
+            <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-brand-tan font-bold text-xs uppercase">
+                    {user.username?.[0] || 'U'}
+                </div>
+                <div>
+                    <p className="text-sm font-bold text-gray-900 truncate max-w-[120px]">{user.full_name || user.username}</p>
+                    <p className="text-xs text-green-600">Online</p>
+                </div>
+                </div>
+            </div>
+            ))
+        )}
       </div>
     </div>
   );
@@ -322,7 +352,7 @@ const NumbersPage: React.FC<NumbersPageProps> = ({ onBack, currentUser }) => {
     );
   }
 
-  // --- REUSED VIEWS (Simplified for brevity, same logic as ActivityModal but full page structure) ---
+  // --- REUSED VIEWS ---
   
   if (viewState === 'COUNTDOWN') {
     return (
@@ -440,10 +470,9 @@ const NumbersPage: React.FC<NumbersPageProps> = ({ onBack, currentUser }) => {
         </div>
 
         <div className="flex-1 overflow-auto flex justify-center p-4">
-           {/* Result Grid Visualization (Simplified for brevity, similar to ActivityModal but cleaner) */}
+           {/* Result Grid Visualization */}
            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                <div className="text-center text-gray-400 italic mb-4">Detailed result grid view</div>
-               {/* Logic from ActivityModal for grid rendering goes here, reusing the same structure */}
                {numbersGrid[currentPage]?.map((row, rowIndex) => {
                    const rowUserAnswers = userAnswers[currentPage]?.[rowIndex] || [];
                    let lastIndex = -1;
